@@ -1,0 +1,59 @@
+## Visual Studio ##
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Build results ##
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+## NuGet ##
+*.nupkg
+*.snupkg
+packages/
+*.nuspec
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Rider ##
+.idea/
+*.sln.iml
+
+## VSCode ##
+.vscode/
+
+## ASP.NET / IIS Express ##
+*.dbmdl
+*.bak
+*.msscci
+*.vspscc
+*.vssscc
+*.psess
+*.vsp
+*.vspx
+*.vsix
+*.cache
+*.pdb
+*.mdb
+*.log
+*.sql
+*.db
+*.pidb
+*.svclog
+
+## Config files ##
+appsettings.*.json
+secrets.json
+
+## Others ##
+_ReSharper*/
+*.DotSettings.user
+TestResults/
+*.publish.xml
+
+# Ignore local development files
+local.settings.json
