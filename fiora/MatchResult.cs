@@ -14,7 +14,7 @@ namespace fiora
                 Draw, // Match nul
                 Loss // Défaite
             }
-            public Result Outcome { get; set; }
+        public Result Outcome { get; set; }
             // Constructeur pour faciliter les tests
             public MatchResult(Result outcome)
             {

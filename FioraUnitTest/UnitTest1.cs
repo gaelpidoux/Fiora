@@ -14,20 +14,130 @@ namespace FioraUnitTest
             _calculator = new ScoreCalculator();
         }
 
-        // Tests avec données paramétrées
+        /// <summary>
+        /// Jeux de données de test : séparés par catégorie pour plus de lisibilité.
+        /// </summary>
+        #region MemberData
+        public static class ScoreTestData
+        {
+            #region Raccourcis pour les résultats
+            private static MatchResult W => new(MatchResult.Result.Win);
+            private static MatchResult D => new(MatchResult.Result.Draw);
+            private static MatchResult L => new(MatchResult.Result.Loss);
+            #endregion
+
+            // --------------- 1-4 : Fonctionnement « de base » ----------------
+            public static IEnumerable<object[]> Basic =>
+                new List<object[]>
+                {
+                // 1. Calcul simple : Win, Draw, Loss → 4 points
+                new object[] { new[] { W, D, L }, 4 },
+
+                // 2. Que des victoires : Win, Win → 6 points
+                new object[] { new[] { W, W }, 6 },
+
+                // 3. Que des nuls : Draw ×3 → 3 points
+                new object[] { new[] { D, D, D }, 3 },
+
+                // 4. Que des défaites : Loss ×2 → 0 point
+                new object[] { new[] { L, L }, 0 },
+                };
+
+            // --------------- 5-9 : Bonus de série ---------------------------
+            public static IEnumerable<object[]> StreakBonus =>
+                new List<object[]>
+                {
+                // 5. Bonus minimum : Win ×3 → 14 points (9 + 5)
+                new object[] { new[] { W, W, W }, 14 },
+
+                // 6. 4 victoires : Win ×4 → 17 points (12 + 5)
+                new object[] { new[] { W, W, W, W }, 17 },
+
+                // 7. Streak interrompu : Win, Win, Loss, Win → 6 points
+                new object[] { new[] { W, W, L, W }, 9 },
+
+                // 8. Deux séries : Win ×3, Loss, Win ×4 → 31 points (21 + 10)
+                new object[] { new[] { W, W, W, L, W, W, W, W }, 31 },
+
+                // 9. Bonus non accordé (moins de 3 victoires d’affilée)
+                //    Win, Draw, Win, Win → 10 points
+                new object[] { new[] { W, D, W, W }, 10 },
+                };
+            public static IEnumerable<object[]> Penalities =>
+              new List<object[]>
+              {
+                        
+                        new object[] { new[] { W, W, D, W }, 7 , 3 },
+                        new object[] { new[] { W, D, D}, 0, 8 },
+                        new object[] { new[] { W, W, D}, 0, 7 }
+              };
+
+            public static IEnumerable<object[]> Out =>
+              new List<object[]>
+              {
+                                    // 5. Bonus minimum : Win ×3 → 14 points (9 + 5) MAIS isDisqualified = true
+                                    new object[] { new[] { W, W, W }, 0, true},
+                                     // pas de combat MAIS isDisqualified = true
+                                    new object[] { new[] { new MatchResult[] { }, }, 0, true},
+              };
+        
+        }
+        #endregion
+
+
+        // ---------- Tests de base -------------------------------------------------
+        #region Testsdebase
         [Theory]
-        [InlineData(new[] { "Win", "Win", "Win" }, 14)] // 9 points + 5 bonus
-        [InlineData(new[] { "Win", "Draw", "Win" }, 7)] // 7 points, pas de bonus
-        public void Should_Calculate_Score_Correctly(string[] results, int expectedScore)
-        { }
+        [MemberData(nameof(ScoreTestData.Basic), MemberType = typeof(ScoreTestData))]
+        public void Should_Calculate_Basic_Scenarios(MatchResult[] matches, int expected)
+        {
+            // Act
+            var score = _calculator.CalculateScore(matches.ToList());
+
+            // Assert
+            score.Should().Be(expected);
+        }
+        #endregion
+
+        // ---------- Tests du bonus de série --------------------------------------
+        #region Testsdubonusdesérie
+        [Theory]
+        [MemberData(nameof(ScoreTestData.StreakBonus), MemberType = typeof(ScoreTestData))]
+        public void Should_Calculate_Streak_Bonus_Scenarios(MatchResult[] matches, int expected)
+        {
+            // Act
+            var score = _calculator.CalculateScore(matches.ToList());
+
+            // Assert
+            score.Should().Be(expected);
+        }
+        #endregion
+
+        // ---------- Cas limite : score jamais négatif ----------------------------
+        #region Caslimite
+        [Fact]
+        public void Should_Not_Allow_Negative_Final_Score()
+        {
+            // Arrange : 3 + 1 = 4 points, mais 10 points de pénalité
+            var matches = new List<MatchResult>
+        {
+            new(MatchResult.Result.Win),
+            new(MatchResult.Result.Draw)
+        };
+
+            // Act
+            var score = _calculator.CalculateScore(matches, penaltyPoints: 10);
+
+            // Assert
+            score.Should().Be(0, "le score final ne peut jamais être négatif");
+        }
+
         // Tests des cas limites
         [Fact]
         public void Should_Return_Zero_When_Disqualified() { }
-        [Fact]
-        public void Should_Not_Allow_Negative_Final_Score() { }
     
 
-    [Fact]
+        [Fact]
         public void Should_Calculate_Basic_Score_Without_Bonus()
         {
             // Arrange
@@ -89,6 +199,34 @@ namespace FioraUnitTest
             .WithParameterName("matches")
             .WithMessage("*cannot be null*");
         }
+        #endregion
 
+        // ---------- Tests de disqualification -------------------------------------------------
+        #region Tests de disqualification
+        [Theory]
+        [MemberData(nameof(ScoreTestData.Out), MemberType = typeof(ScoreTestData))]
+        public void Should_Calculate_PlayerOut(MatchResult[] matches, int expected, bool isDisqualified)
+        {
+            // Act
+            var score = _calculator.CalculateScore(matches.ToList(), isDisqualified);
+
+            // Assert
+            score.Should().Be(expected);
+        }
+        #endregion
+
+        // ---------- Tests des pénalités -------------------------------------------------
+        #region Tests des pénalités
+        [Theory]
+        [MemberData(nameof(ScoreTestData.Penalities), MemberType = typeof(ScoreTestData))]
+        public void Should_Calculate_Basic_Scenarios_Penalities(MatchResult[] matches, int expected,int penaltyPoints)
+        {
+            // Act
+            var score = _calculator.CalculateScore(matches.ToList(), false, penaltyPoints);
+
+            // Assert
+            score.Should().Be(expected);
+        }
+        #endregion
     }
 }
