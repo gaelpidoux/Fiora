@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace fiora
 {
@@ -7,14 +8,20 @@ namespace fiora
     {
         public int CalculateScore(List<MatchResult> matches, bool isDisqualified = false, int penaltyPoints = 0)
         {
+
             if (matches == null)
                 throw new ArgumentNullException(nameof(matches), "Match list cannot be null.");
+
+            if (isDisqualified)
+                return 0;
+
+            if (matches.Count == 0)
+                return 0;
 
             if (penaltyPoints < 0)
                 throw new ArgumentException("Penalty points cannot be negative.", nameof(penaltyPoints));
 
-            if (isDisqualified)
-                return 0;
+
 
             int score = 0;
             int consecutiveWins = 0;

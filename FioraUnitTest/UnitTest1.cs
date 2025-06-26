@@ -1,232 +1,212 @@
 ﻿using Xunit;
 using FluentAssertions;
-using Moq;
 using fiora;
-
+using System.Collections.Generic;
+using System.Linq;
 
 namespace FioraUnitTest
 {
     public class ScoreCalculatorTests
     {
         private readonly ScoreCalculator _calculator;
+
         public ScoreCalculatorTests()
         {
             _calculator = new ScoreCalculator();
         }
 
-        /// <summary>
-        /// Jeux de données de test : séparés par catégorie pour plus de lisibilité.
-        /// </summary>
-        #region MemberData
-        public static class ScoreTestData
+        #region Player-based Test Data
+        public static class PlayerTestData
         {
-            #region Raccourcis pour les résultats
             private static MatchResult W => new(MatchResult.Result.Win);
             private static MatchResult D => new(MatchResult.Result.Draw);
             private static MatchResult L => new(MatchResult.Result.Loss);
-            #endregion
 
-            // --------------- 1-4 : Fonctionnement « de base » ----------------
-            public static IEnumerable<object[]> Basic =>
-                new List<object[]>
-                {
-                // 1. Calcul simple : Win, Draw, Loss → 4 points
-                new object[] { new[] { W, D, L }, 4 },
+            public static IEnumerable<object[]> Basic => new List<object[]>
+            {
+                new object[] { new Player { Matches = new List<MatchResult> { W, D, L } }, 4 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, W } }, 6 },
+                new object[] { new Player { Matches = new List<MatchResult> { D, D, D } }, 3 },
+                new object[] { new Player { Matches = new List<MatchResult> { L, L } }, 0 }
+            };
 
-                // 2. Que des victoires : Win, Win → 6 points
-                new object[] { new[] { W, W }, 6 },
+            public static IEnumerable<object[]> StreakBonus => new List<object[]>
+            {
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, W } }, 14 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, W, W } }, 17 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, L, W } }, 9 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, W, L, W, W, W, W } }, 31 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, D, W, W } }, 10 }
+            };
 
-                // 3. Que des nuls : Draw ×3 → 3 points
-                new object[] { new[] { D, D, D }, 3 },
+            public static IEnumerable<object[]> Penalities => new List<object[]>
+            {
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, D, W }, PenaltyPoints = 3 }, 7 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, D, D }, PenaltyPoints = 8 }, 0 },
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, D }, PenaltyPoints = 7 }, 0 }
+            };
 
-                // 4. Que des défaites : Loss ×2 → 0 point
-                new object[] { new[] { L, L }, 0 },
-                };
-
-            // --------------- 5-9 : Bonus de série ---------------------------
-            public static IEnumerable<object[]> StreakBonus =>
-                new List<object[]>
-                {
-                // 5. Bonus minimum : Win ×3 → 14 points (9 + 5)
-                new object[] { new[] { W, W, W }, 14 },
-
-                // 6. 4 victoires : Win ×4 → 17 points (12 + 5)
-                new object[] { new[] { W, W, W, W }, 17 },
-
-                // 7. Streak interrompu : Win, Win, Loss, Win → 6 points
-                new object[] { new[] { W, W, L, W }, 9 },
-
-                // 8. Deux séries : Win ×3, Loss, Win ×4 → 31 points (21 + 10)
-                new object[] { new[] { W, W, W, L, W, W, W, W }, 31 },
-
-                // 9. Bonus non accordé (moins de 3 victoires d’affilée)
-                //    Win, Draw, Win, Win → 10 points
-                new object[] { new[] { W, D, W, W }, 10 },
-                };
-            public static IEnumerable<object[]> Penalities =>
-              new List<object[]>
-              {
-                        
-                        new object[] { new[] { W, W, D, W }, 7 , 3 },
-                        new object[] { new[] { W, D, D}, 0, 8 },
-                        new object[] { new[] { W, W, D}, 0, 7 }
-              };
-
-            public static IEnumerable<object[]> Out =>
-              new List<object[]>
-              {
-                                    // 5. Bonus minimum : Win ×3 → 14 points (9 + 5) MAIS isDisqualified = true
-                                    new object[] { new[] { W, W, W }, 0, true},
-                                     // pas de combat MAIS isDisqualified = true
-                                    new object[] { new[] { new MatchResult[] { }, }, 0, true},
-              };
-        
+            public static IEnumerable<object[]> Disqualified => new List<object[]>
+            {
+                new object[] { new Player { Matches = new List<MatchResult> { W, W, W }, IsDisqualified = true }, 0 },
+                new object[] { new Player { Matches = new List<MatchResult>(), IsDisqualified = true }, 0 }
+            }; 
         }
         #endregion
 
-
-        // ---------- Tests de base -------------------------------------------------
-        #region Testsdebase
         [Theory]
-        [MemberData(nameof(ScoreTestData.Basic), MemberType = typeof(ScoreTestData))]
-        public void Should_Calculate_Basic_Scenarios(MatchResult[] matches, int expected)
+        [MemberData(nameof(PlayerTestData.Basic), MemberType = typeof(PlayerTestData))]
+        public void Should_Calculate_Basic_Score(Player player, int expected)
         {
-            // Act
-            var score = _calculator.CalculateScore(matches.ToList());
-
-            // Assert
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
             score.Should().Be(expected);
         }
-        #endregion
 
-        // ---------- Tests du bonus de série --------------------------------------
-        #region Testsdubonusdesérie
         [Theory]
-        [MemberData(nameof(ScoreTestData.StreakBonus), MemberType = typeof(ScoreTestData))]
-        public void Should_Calculate_Streak_Bonus_Scenarios(MatchResult[] matches, int expected)
+        [MemberData(nameof(PlayerTestData.StreakBonus), MemberType = typeof(PlayerTestData))]
+        public void Should_Calculate_Streak_Bonus(Player player, int expected)
         {
-            // Act
-            var score = _calculator.CalculateScore(matches.ToList());
-
-            // Assert
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
             score.Should().Be(expected);
         }
-        #endregion
 
-        // ---------- Cas limite : score jamais négatif ----------------------------
-        #region Caslimite
-        [Fact]
-        public void Should_Not_Allow_Negative_Final_Score()
+        [Theory]
+        [MemberData(nameof(PlayerTestData.Penalities), MemberType = typeof(PlayerTestData))]
+        public void Should_Calculate_Score_With_Penalities(Player player, int expected)
         {
-            // Arrange : 3 + 1 = 4 points, mais 10 points de pénalité
-            var matches = new List<MatchResult>
-        {
-            new(MatchResult.Result.Win),
-            new(MatchResult.Result.Draw)
-        };
-
-            // Act
-            var score = _calculator.CalculateScore(matches, penaltyPoints: 10);
-
-            // Assert
-            score.Should().Be(0, "le score final ne peut jamais être négatif");
-        }
-
-        // Tests des cas limites
-        [Fact]
-        public void Should_Return_Zero_When_Disqualified() { }
-    
-
-        [Fact]
-        public void Should_Calculate_Basic_Score_Without_Bonus()
-        {
-            // Arrange
-            var matches = new List<MatchResult>
-            {
-            new(MatchResult.Result.Win), // 3 points
-            new(MatchResult.Result.Draw), // 1 point
-            new(MatchResult.Result.Loss) // 0 point
-            };
-            // Act
-            var score = _calculator.CalculateScore(matches);
-            // Assert
-            score.Should().Be(4, "because 3+1+0 = 4 points without bonus");
-        }
-
-        [Fact]
-        public void Should_Add_Bonus_For_Three_Consecutive_Wins()
-        {
-            // Arrange
-            var matches = new List<MatchResult>
-            {
-            new(MatchResult.Result.Win),
-            new(MatchResult.Result.Win),
-            new(MatchResult.Result.Win),
-            new(MatchResult.Result.Draw)
-            };
-            // Act
-            var score = _calculator.CalculateScore(matches);
-            // Assert
-            score.Should().Be(15, "because 3*3 + 1 + 5 bonus = 15 points");
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
+            score.Should().Be(expected);
         }
 
         [Theory]
-        [InlineData(3, 0, 0, 14)] // 3 wins → 9 + 5 bonus
-        [InlineData(2, 1, 0, 7)] // 2 wins, 1 draw → 7, no bonus
-        [InlineData(0, 0, 3, 0)] // 3 losses → 0 points
-        public void Should_Calculate_Score_With_Different_Results(int wins, int draws, int losses, int expected)
+        [MemberData(nameof(PlayerTestData.Disqualified), MemberType = typeof(PlayerTestData))]
+        public void Should_Return_Zero_When_Disqualified(Player player, int expected)
         {
-            // Arrange
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
+            score.Should().Be(expected);
+        }
+
+
+        [Fact]
+
+        public void Should_Limited_Case()
+        {
+            var player = new Player { Matches = new List<MatchResult>(), PenaltyPoints = 0 };
+            var score = _calculator.CalculateScore(player.Matches, false, player.PenaltyPoints);
+            score.Should().Be(0);
+        }
+
+        [Fact]
+        public void Should_Limited_Case_Penalty_Negatif()
+        {
+            var matches1 = new MatchResult(MatchResult.Result.Win);
+            var matches2 = new MatchResult(MatchResult.Result.Win);
+
+            var player = new Player { Matches = new List<MatchResult> { matches1 , matches2 }, PenaltyPoints = -1 };
+            Action act = () => _calculator.CalculateScore(player.Matches, false, player.PenaltyPoints);
+
+            act.Should()
+               .Throw<ArgumentException>()
+               .WithParameterName("penaltyPoints")
+               .WithMessage("*Penalty points cannot be negative*");
+        }
+
+        [Fact]
+        public void Should_Limited_Case_Match_Null()
+        {
+            var player = new Player { Matches = null, IsDisqualified = false, PenaltyPoints = 0 };
+
+            Action act = () => _calculator.CalculateScore(player.Matches, false, player.PenaltyPoints);
+
+            act.Should()
+               .Throw<ArgumentNullException>()
+               .WithParameterName("matches")
+               .WithMessage("*cannot be null*");
+        }
+
+
+        [Fact]
+        public void Should_Limited_Case_100Match()
+        {
+            // Arrange : pattern de 100 matchs : Win, Draw, Loss, Win, Draw, Loss, ...
             var matches = new List<MatchResult>();
-            for (int i = 0; i < wins; i++)
-                matches.Add(new(MatchResult.Result.Win));
-            for (int i = 0; i < draws; i++)
-                matches.Add(new(MatchResult.Result.Draw));
-            for (int i = 0; i < losses; i++)
-                matches.Add(new(MatchResult.Result.Loss));
+            int expectedScore = 0;
+            int consecutiveWins = 0;
+            int bonusCount = 0;
+
+            for (int i = 0; i < 100; i++)
+            {
+                MatchResult match;
+                switch (i % 3)
+                {
+                    case 0:
+                        match = new MatchResult(MatchResult.Result.Win);
+                        matches.Add(match);
+                        expectedScore += 3;
+                        consecutiveWins++;
+
+                        // gestion bonus
+                        if (consecutiveWins == 3)
+                        {
+                            expectedScore += 5;
+                            bonusCount++;
+                        }
+                        else if (consecutiveWins > 3 && bonusCount < 1)
+                        {
+                            // éviter bonus multiples pour une même série >3
+                        }
+                        break;
+
+                    case 1:
+                        match = new MatchResult(MatchResult.Result.Draw);
+                        matches.Add(match);
+                        expectedScore += 1;
+                        consecutiveWins = 0;
+                        bonusCount = 0;
+                        break;
+
+                    case 2:
+                        match = new MatchResult(MatchResult.Result.Loss);
+                        matches.Add(match);
+                        consecutiveWins = 0;
+                        bonusCount = 0;
+                        break;
+                }
+            }
+
+            var player = new Player
+            {
+                Matches = matches
+            };
+
             // Act
-            var score = _calculator.CalculateScore(matches);
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
+
             // Assert
-            score.Should().Be(expected);
+            score.Should().Be(expectedScore, "le score doit correspondre à la simulation de 100 matchs avec bonus");
         }
+
 
         [Fact]
         public void Should_Throw_Exception_When_Matches_Is_Null()
         {
-            // Act & Assert
-            Action act = () => _calculator.CalculateScore(null);
+            var player = new Player { Matches = null };
+            Action act = () => _calculator.CalculateScore(player.Matches);
             act.Should().Throw<ArgumentNullException>()
-            .WithParameterName("matches")
-            .WithMessage("*cannot be null*");
+                .WithParameterName("matches")
+                .WithMessage("*cannot be null*");
         }
-        #endregion
 
-        // ---------- Tests de disqualification -------------------------------------------------
-        #region Tests de disqualification
-        [Theory]
-        [MemberData(nameof(ScoreTestData.Out), MemberType = typeof(ScoreTestData))]
-        public void Should_Calculate_PlayerOut(MatchResult[] matches, int expected, bool isDisqualified)
+        [Fact]
+        public void Should_Not_Allow_Negative_Final_Score()
         {
-            // Act
-            var score = _calculator.CalculateScore(matches.ToList(), isDisqualified);
-
-            // Assert
-            score.Should().Be(expected);
+            var player = new Player
+            {
+                Matches = new List<MatchResult> { new(MatchResult.Result.Win), new(MatchResult.Result.Draw) },
+                PenaltyPoints = 10
+            };
+            var score = _calculator.CalculateScore(player.Matches, player.IsDisqualified, player.PenaltyPoints);
+            score.Should().Be(0);
         }
-        #endregion
-
-        // ---------- Tests des pénalités -------------------------------------------------
-        #region Tests des pénalités
-        [Theory]
-        [MemberData(nameof(ScoreTestData.Penalities), MemberType = typeof(ScoreTestData))]
-        public void Should_Calculate_Basic_Scenarios_Penalities(MatchResult[] matches, int expected,int penaltyPoints)
-        {
-            // Act
-            var score = _calculator.CalculateScore(matches.ToList(), false, penaltyPoints);
-
-            // Assert
-            score.Should().Be(expected);
-        }
-        #endregion
     }
 }
